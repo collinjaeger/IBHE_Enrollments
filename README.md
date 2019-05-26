@@ -8,4 +8,4 @@ http://legacy.ibhe.org/IBHEDatabook/ChapterI/Table%20I-2.aspx
 
 One file (.csv) was downloaded for each year (1996 - 2016). No data were available for 2013. The data are very untidy, but at least they're consistently untidy.
 
-These data are publicly available and represent all institutions of higher education in Illinois. As an example, Northern Illinois University is explored in detail.
+These data are publicly available and represent all institutions of higher education in Illinois. As an example, Northern Illinois University is explored in detail. Replace "Northern Illinois University" with the name of another school to explore a different college or university.
