@@ -1,0 +1,390 @@
+---
+title: "College Enrollments in Illinois"
+author: "Collin Jaeger"
+date: "3/30/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+
+```
+
+## About the data
+Source: IBHE Data Book
+
+Table I-2: Total Fall Enrollments by Gender, Race or National Origin, and Type of Institution, and Level of Instruction
+
+http://legacy.ibhe.org/IBHEDatabook/ChapterI/Table%20I-2.aspx
+
+One file (.csv) was downloaded for each year (1996 - 2016, except 2013).
+
+The data are very untidy . . . but at least they're *consistently* untidy!
+
+## Load a few libraries
+```{r}
+
+library(tidyverse)
+library(readxl)
+library(vegan)
+
+```
+
+## Import and tidy the data
+```{r}
+
+setwd('~/Documents/R_Data/IBHE_Enrollments/Data')
+
+year = 1996
+
+file = paste0(year, '.csv')
+
+df = read.csv(file)
+
+df %>% tbl_df
+
+# Remove the commas from the data
+no.commas = function(x){
+  dx = as.character(df[ , x])
+  dx2 = as.numeric(gsub(',', '', dx))
+  dx2
+}
+
+df2 = data.frame(df[, 1], sapply(2:23, no.commas))
+
+names(df2) = names(df)
+
+df2$Level.of.Instruction = as.character(df2$Level.of.Instruction)
+
+df2 %>% tbl_df
+
+categories = df2 %>%
+  tbl_df %>%
+  filter(grepl('^ [[:blank:]]*', Level.of.Instruction)) %>%
+  select(Level.of.Instruction)
+
+categories$rownum = grep('^ [[:blank:]]*', df2$Level.of.Instruction)
+
+l1 = split(df2, cumsum(1:nrow(df2) %in% categories$rownum))
+
+names(l1) = categories$Level.of.Instruction
+
+df3 = bind_rows(l1, .id='Category')
+
+df3 %>% tbl_df
+
+rownum2 = grep('Undergraduate', df3$Level.of.Instruction) - 1
+
+l2 = split(df3, cumsum(1:nrow(df3) %in% rownum2))
+
+names(l2) = df3$Level.of.Instruction[c(1, rownum2)]
+
+df4 = bind_rows(l2, .id='School')
+df4$Year = year
+
+df4 %>% tbl_df
+
+df5 = df4 %>% 
+  tbl_df %>%
+  filter( ! is.na(Grand.Total)) %>%
+  filter( ! grepl('Total', School, ignore.case = T)) %>%
+  rename(Level = Level.of.Instruction) %>%
+  filter(Level %in% c('Undergraduate', 'Graduate')) %>%
+  mutate(Category = trimws(Category)) %>%
+  select(Year, Category, School, everything(), 
+         -X, -Total.M, -Total.F, -Grand.Total)
+
+df5 %>% tbl_df
+
+```
+
+## So, that code works to tidy *one* year.
+## Turn it into a *function*, and use it on a *different* year.
+```{r, include=F}
+
+clean.data = function(year){
+
+  setwd('~/Documents/R_Data/IBHE_Enrollments/Data')
+
+  file = paste0(year, '.csv')
+  
+  df = read.csv(file)
+  
+  # Remove the commas from the data
+  no.commas = function(x){
+    dx = as.character(df[ , x])
+    dx2 = as.numeric(gsub(',', '', dx))
+    dx2
+  }
+  
+  df2 = data.frame(df[, 1], sapply(2:23, no.commas))
+  
+  names(df2) = names(df)
+  
+  df2$Level.of.Instruction = as.character(df2$Level.of.Instruction)
+  
+  categories = df2 %>%
+    tbl_df %>%
+    filter(grepl('^ [[:blank:]]*', Level.of.Instruction)) %>%
+    select(Level.of.Instruction)
+  
+  categories$rownum = grep('^ [[:blank:]]*', df2$Level.of.Instruction)
+  
+  l1 = split(df2, cumsum(1:nrow(df2) %in% categories$rownum))
+  
+  names(l1) = categories$Level.of.Instruction
+  
+  df3 = bind_rows(l1, .id='Category')
+  
+  rownum2 = grep('Undergraduate', df3$Level.of.Instruction) - 1
+  
+  l2 = split(df3, cumsum(1:nrow(df3) %in% rownum2))
+  
+  names(l2) = df3$Level.of.Instruction[c(1, rownum2)]
+  
+  df4 = bind_rows(l2, .id='School')
+  df4$Year = year
+  
+  df5 = df4 %>% 
+    tbl_df %>%
+    filter( ! is.na(Grand.Total)) %>%
+    filter( ! grepl('Total', School, ignore.case = T)) %>%
+    rename(Level = Level.of.Instruction) %>%
+    filter(Level %in% c('Undergraduate', 'Graduate')) %>%
+    mutate(Category = trimws(Category)) %>%
+    select(Year, Category, School, everything(), 
+           -X, -Total.M, -Total.F, -Grand.Total)
+  
+  df5
+}
+
+```
+
+```{r}
+
+clean.data(1997)
+
+clean.data(2002)
+
+```
+
+
+## Now, tidy and consolidate all of the data.
+```{r}
+
+yrs = c(1996:2012, 2014:2016)
+
+out.list = lapply(yrs, clean.data)
+
+out.df = bind_rows(out.list)
+
+out.df
+  
+```
+
+## Make a few plots
+```{r}
+
+out.df %>%
+  ggplot() +
+  geom_bar(aes(Year, fill=Category), show.legend=F) +
+  labs(y='Number of Schools') +
+  facet_wrap(~Category, scales='free', ncol=2)
+
+```
+
+
+
+```{r}
+
+out.df %>%
+  mutate(Total = out.df %>% 
+           select(contains(".")) %>% rowSums()) %>%
+  filter(Level == 'Undergraduate') %>%
+  ggplot() +
+  geom_line(aes(Year, Total, group=School),
+             show.legend=F, alpha=0.5, col='blue') +
+  facet_wrap(~Category, scales='free', ncol=2)
+
+```
+
+```{r, fig.height=8, fig.width=8}
+
+out.df %>%
+  mutate(Total = out.df %>% 
+           select(contains(".")) %>% rowSums()) %>%
+  filter(Category == 'Public Universities:',
+         Level == 'Undergraduate') %>%
+  ggplot() +
+  geom_line(aes(Year, Total, group=School), 
+            show.legend=F, col='blue') +
+  labs(y='Undergraduate Enrollment',
+       title='Public Universities') +
+  facet_wrap(~School, ncol=3) +
+  theme(text = element_text(size=22))
+
+
+```
+
+
+
+```{r}
+
+out.df %>%
+  mutate(Total = out.df %>% 
+           select(contains(".")) %>% rowSums()) %>%
+  filter(School == 'Northern Illinois University',
+         Level == 'Undergraduate') %>%
+  ggplot() +
+  geom_line(aes(Year, Total), col='blue') +
+  labs(y='Undergraduate Enrollment')
+
+```
+
+```{r}
+
+out.df.long = out.df %>%
+  gather(Group, Enrollment, 
+         -Year, -Category, -School, -Level) %>%
+  mutate(Group = gsub('.M', '_M', Group),
+         Group = gsub('.F', '_F', Group)) %>%
+  separate(Group, into=c('Race', 'Sex'), 
+           sep='_', extra='merge')
+
+out.df.long
+
+```
+
+```{r}
+
+out.df.long %>%
+  filter(grepl('Northern Illinois', School),
+         Level == 'Graduate') %>%
+  ggplot() +
+  geom_line(aes(Year, Enrollment, color = Sex)) +
+  facet_wrap(~Race, ncol=3)
+
+```
+
+
+```{r}
+
+out.df.long %>%
+  filter(School == 'Northern Illinois University',
+         Level == 'Undergraduate') %>%
+  group_by(Year, Race) %>%
+  summarize(n = sum(Enrollment)) %>%
+  mutate(Proportion = prop.table(n)) %>%
+  ggplot() +
+  geom_area(aes(Year, Proportion, fill=Race, group=Race)) +
+  scale_fill_brewer(palette = 'Spectral')
+
+```
+```{r}
+
+out.df.long %>%
+  filter(School == 'Northern Illinois University',
+         Level == 'Undergraduate') %>%
+  mutate(Race = fct_collapse(Race, 
+                             Other = c('Alien',
+                                       'Asian',
+                                       'Hawaiian',
+                                       'Indian',
+                                       'Other',
+                                       'Two.or.more.races'))) %>%
+  group_by(Year, Race) %>%
+  summarize(n = sum(Enrollment)) %>%
+  ggplot() +
+  geom_area(aes(Year, n/1000, fill=Race, group=Race),
+            position='fill') +
+  labs(y='Proportion of students') +
+  scale_fill_brewer(palette = 'Spectral')
+
+```
+
+```{r}
+out.df.long %>%
+  filter(School == 'Northwestern University',
+         Level == 'Undergraduate') %>%
+  mutate(Race = fct_collapse(Race, 
+                             Other = c('Alien',
+                                       'Asian',
+                                       'Hawaiian',
+                                       'Indian',
+                                       'Other',
+                                       'Two.or.more.races'))) %>%
+  group_by(Year, Race) %>%
+  summarize(n = sum(Enrollment)) %>%
+  ggplot() +
+  geom_area(aes(Year, n/1000, fill=Race, group=Race)) +
+  labs(y = 'Enrollment (thousands)') +
+  scale_fill_brewer(palette = 'Spectral')
+
+```
+
+## Racial diversity within a school over time (M and F combined)
+```{r, fig.height=6, fig.width=10}
+
+library(vegan)
+
+out.df2 = out.df %>%
+  gather(Group, Enrollment, 
+         -Year, -Category, -School, -Level) %>%
+  mutate(Group = gsub('.M', '_M', Group),
+         Group = gsub('.F', '_F', Group)) %>%
+  separate(Group, into=c('Race', 'Sex'), 
+           sep='_', extra='merge') %>%
+  mutate(Race = fct_collapse(Race, 
+                             Other = c('Alien',
+                                       'Asian',
+                                       'Hawaiian',
+                                       'Indian',
+                                       'Other',
+                                       'Two.or.more.races'))) %>%
+  group_by(Category, School, Year, Level, Race) %>%
+  summarize(Enrollment = sum(Enrollment)) %>%
+  filter(Level == 'Undergraduate') %>%
+  spread(Race, Enrollment) %>%
+  mutate(Total = Other + Black + Hisp. + White)
+
+
+out.df2$Diversity = diversity(out.df2[ , 5:8], 'simpson')
+
+out.df2 %>%
+  filter(Category == 'Public Universities:') %>%
+  ggplot() +
+  geom_line(aes(Year, Diversity, group=School), col='blue') +
+  facet_wrap(~School)
+
+```
+
+## Diversity and Enrollment (over time)
+```{r}
+
+out.df2 %>%
+  filter(School == 'Northern Illinois University') %>%
+  ggplot() +
+  geom_point(aes(Year, Diversity, 
+                 group=School, size=Total, col=Total))
+
+```
+
+```{r}
+
+sch = "Northwestern University"
+
+out.df2 %>%
+  filter(School == sch) %>%
+  ggplot() +
+  geom_point(aes(Total, Diversity), show.legend=F) +
+  geom_label(aes(Total, Diversity, label=Year, col=Year),
+             show.legend=F) +
+  scale_color_gradient(low = 'lightblue', high = 'darkblue') +
+  labs(x='Undergraduate Enrollment', 
+       y="Racial Diversity (Simpson's Index)",
+       title=sch)
+
+```
+
+
